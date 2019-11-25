@@ -26,6 +26,8 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.Properties;
 
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
+import com.amazonaws.services.dynamodbv2.local.embedded.DynamoDBEmbedded;
 import com.amazonaws.services.s3.AmazonS3;
 
 import org.apache.jackrabbit.oak.segment.spi.persistence.ManifestFile;
@@ -45,7 +47,9 @@ public class AwsManifestFileTest {
         AmazonS3 s3 = s3Mock.createClient();
         String bucketName = "oak-test";
         s3.createBucket(bucketName);
-        awsContext = AwsContext.create(s3, bucketName, "oak");
+
+        AmazonDynamoDB ddb = DynamoDBEmbedded.create().amazonDynamoDB();
+        awsContext = AwsContext.create(s3, bucketName, "oak", ddb, "testtable");
     }
 
     @Test
