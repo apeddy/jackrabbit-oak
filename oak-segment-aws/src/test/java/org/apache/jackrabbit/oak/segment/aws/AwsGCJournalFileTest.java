@@ -18,20 +18,10 @@
  */
 package org.apache.jackrabbit.oak.segment.aws;
 
-import static org.apache.jackrabbit.oak.segment.aws.AwsContext.TABLE_ATTR_FILENAME;
-import static org.apache.jackrabbit.oak.segment.aws.AwsContext.TABLE_ATTR_TIMESTAMP;
-
 import java.io.IOException;
+import java.util.Date;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
-import com.amazonaws.services.dynamodbv2.document.DynamoDB;
-import com.amazonaws.services.dynamodbv2.local.embedded.DynamoDBEmbedded;
-import com.amazonaws.services.dynamodbv2.model.AttributeDefinition;
-import com.amazonaws.services.dynamodbv2.model.CreateTableRequest;
-import com.amazonaws.services.dynamodbv2.model.KeySchemaElement;
-import com.amazonaws.services.dynamodbv2.model.KeyType;
-import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughput;
-import com.amazonaws.services.dynamodbv2.model.ScalarAttributeType;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.jackrabbit.oak.segment.file.GcJournalTest;
@@ -55,18 +45,8 @@ public class AwsGCJournalFileTest extends GcJournalTest {
     @Before
     public void setup() {
         String bucketName = "testbkt1";
-        AmazonDynamoDB ddb = DynamoDBEmbedded.create().amazonDynamoDB();
-        DynamoDB client = new DynamoDB(ddb);
-        String tableName = "testtable";
-
-        CreateTableRequest createTableRequest = new CreateTableRequest().withTableName(tableName)
-                .withKeySchema(new KeySchemaElement(TABLE_ATTR_FILENAME, KeyType.HASH),
-                        new KeySchemaElement(TABLE_ATTR_TIMESTAMP, KeyType.RANGE))
-                .withAttributeDefinitions(new AttributeDefinition(TABLE_ATTR_FILENAME, ScalarAttributeType.S),
-                        new AttributeDefinition(TABLE_ATTR_TIMESTAMP, ScalarAttributeType.N))
-                .withProvisionedThroughput(new ProvisionedThroughput(1000L, 1500L));
-        client.createTable(createTableRequest);
-
+        String tableName = "testtable-" + new Date().getTime();
+        AmazonDynamoDB ddb = DynamoDBMock.createClientWithTable(tableName);
         awsContext = AwsContext.create(null, bucketName, "oak", ddb, tableName);
     }
 

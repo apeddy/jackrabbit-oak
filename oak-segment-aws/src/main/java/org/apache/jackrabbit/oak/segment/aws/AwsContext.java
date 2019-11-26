@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import com.amazonaws.AmazonServiceException;
@@ -28,8 +29,10 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.ItemCollection;
+import com.amazonaws.services.dynamodbv2.document.PrimaryKey;
 import com.amazonaws.services.dynamodbv2.document.QueryOutcome;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.amazonaws.services.dynamodbv2.document.TableWriteItems;
 import com.amazonaws.services.dynamodbv2.document.spec.QuerySpec;
 import com.amazonaws.services.dynamodbv2.document.utils.ValueMap;
 import com.amazonaws.services.dynamodbv2.model.AmazonDynamoDBException;
@@ -39,7 +42,6 @@ import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 
-import org.apache.commons.lang3.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,22 +52,27 @@ public final class AwsContext {
 
     public static final String TABLE_ATTR_FILENAME = "filename";
 
-    private static final String TABLE_ATTR_CONTENT = "content";
+    public static final String TABLE_ATTR_CONTENT = "content";
 
     private static final Logger log = LoggerFactory.getLogger(AwsContext.class);
+
+    private static final int TABLE_MAX_BATCH_WRITE_SIZE = 25;
 
     private final AmazonS3 s3;
     private final String bucketName;
     private final String rootDirectory;
 
+    private final DynamoDB dynamoDB;
     private final Table table;
+    private final String tableName;
 
     private AwsContext(AmazonS3 s3, String bucketName, String rootDirectory, AmazonDynamoDB ddb, String tableName) {
         this.s3 = s3;
         this.bucketName = bucketName;
         this.rootDirectory = rootDirectory.endsWith("/") ? rootDirectory : rootDirectory + "/";
-        DynamoDB dynamoDB = new DynamoDB(ddb);
+        this.dynamoDB = new DynamoDB(ddb);
         this.table = dynamoDB.getTable(tableName);
+        this.tableName = tableName;
     }
 
     public static AwsContext create(AmazonS3 s3, String bucketName, String rootDirectory, AmazonDynamoDB ddb,
@@ -102,23 +109,45 @@ public final class AwsContext {
         }
     }
 
-    public void deleteAllDocuments(String fileName) {
-        throw new NotImplementedException("message");
+    public void deleteAllDocuments(String fileName) throws IOException {
+        List<PrimaryKey> primaryKeys = getDocumentsStream(fileName).map(item -> {
+            return new PrimaryKey(TABLE_ATTR_FILENAME, item.getString(TABLE_ATTR_FILENAME), TABLE_ATTR_TIMESTAMP,
+                    item.getNumber(TABLE_ATTR_TIMESTAMP));
+        }).collect(Collectors.toList());
+
+        for (int i = 0; i < primaryKeys.size(); i += TABLE_MAX_BATCH_WRITE_SIZE) {
+            PrimaryKey[] currentKeys = new PrimaryKey[Math.min(TABLE_MAX_BATCH_WRITE_SIZE, primaryKeys.size() - i)];
+            for (int j = 0; j < currentKeys.length; j++) {
+                currentKeys[j] = primaryKeys.get(i + j);
+            }
+
+            dynamoDB.batchWriteItem(new TableWriteItems(tableName).withPrimaryKeysToDelete(currentKeys));
+        }
     }
 
-    public List<String> getDocumentContents(String fileName) throws IOException {
-        QuerySpec spec = new QuerySpec().withKeyConditionExpression(TABLE_ATTR_FILENAME + " = :v_id")
-                .withValueMap(new ValueMap().withString(":v_id", fileName));
+    public Stream<Item> getDocumentsStream(String fileName) throws IOException {
+        String FILENAME_KEY = ":v_filename";
+        QuerySpec spec = new QuerySpec().withScanIndexForward(false)
+                .withKeyConditionExpression(TABLE_ATTR_FILENAME + " = " + FILENAME_KEY)
+                .withValueMap(new ValueMap().withString(FILENAME_KEY, fileName));
         try {
             ItemCollection<QueryOutcome> outcome = table.query(spec);
-            return StreamSupport.stream(outcome.spliterator(), false).map(item -> item.getString(TABLE_ATTR_CONTENT))
-                    .collect(Collectors.toList());
+            return StreamSupport.stream(outcome.spliterator(), false);
         } catch (AmazonDynamoDBException e) {
             throw new IOException(e);
         }
     }
 
+    public List<String> getDocumentContents(String fileName) throws IOException {
+        return getDocumentsStream(fileName).map(item -> item.getString(TABLE_ATTR_CONTENT))
+                .collect(Collectors.toList());
+    }
+
     public void putDocument(String fileName, String line) throws IOException {
+        try {
+            Thread.sleep(1L);
+        } catch (InterruptedException e) {
+        }
         Item item = new Item().with(TABLE_ATTR_TIMESTAMP, new Date().getTime()).with(TABLE_ATTR_FILENAME, fileName)
                 .with(TABLE_ATTR_CONTENT, line);
         try {
