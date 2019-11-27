@@ -17,6 +17,7 @@
 package org.apache.jackrabbit.oak.segment.aws;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,8 +49,9 @@ public class AwsJournalFileConcurrencyIT {
     @Before
     public void setup() throws IOException, InterruptedException {
         String tableName = "oak-" + (suffix++);
-        AmazonDynamoDB ddb = DynamoDBMock.createClientWithTable(tableName);
-        awsContext = AwsContext.create(null, null, "oak", ddb, tableName);
+        String lockTableName = "locktable-" + new Date().getTime();
+        AmazonDynamoDB ddb = DynamoDBMock.createClient(tableName, lockTableName);
+        awsContext = AwsContext.create(null, null, "oak", ddb, tableName, lockTableName);
         writeJournalLines(300, 0);
         log.info("Finished writing initial content to journal!");
     }

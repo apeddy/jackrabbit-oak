@@ -16,21 +16,17 @@
  */
 package org.apache.jackrabbit.oak.segment.aws.journal;
 
-import org.apache.jackrabbit.oak.segment.file.JournalReader;
-import org.apache.jackrabbit.oak.segment.file.JournalReaderTest;
-import org.apache.jackrabbit.oak.segment.aws.AwsContext;
-import org.apache.jackrabbit.oak.segment.aws.AwsJournalFile;
-import org.apache.jackrabbit.oak.segment.aws.DynamoDBMock;
-import org.junit.Before;
-import org.junit.ClassRule;
-import org.junit.Test;
-
 import java.io.IOException;
-import java.net.URISyntaxException;
-import java.security.InvalidKeyException;
 import java.util.Date;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
+
+import org.apache.jackrabbit.oak.segment.aws.AwsContext;
+import org.apache.jackrabbit.oak.segment.aws.AwsJournalFile;
+import org.apache.jackrabbit.oak.segment.aws.DynamoDBMock;
+import org.apache.jackrabbit.oak.segment.file.JournalReader;
+import org.apache.jackrabbit.oak.segment.file.JournalReaderTest;
+import org.junit.Before;
 
 public class AwsJournalReaderTest extends JournalReaderTest {
 
@@ -39,8 +35,9 @@ public class AwsJournalReaderTest extends JournalReaderTest {
     @Before
     public void setup() {
         String tableName = "oak-" + new Date().getTime();
-        AmazonDynamoDB ddb = DynamoDBMock.createClientWithTable(tableName);
-        awsContext = AwsContext.create(null, null, "oak", ddb, tableName);
+        String lockTableName = "locktable-" + new Date().getTime();
+        AmazonDynamoDB ddb = DynamoDBMock.createClient(tableName, lockTableName);
+        awsContext = AwsContext.create(null, null, "oak", ddb, tableName, lockTableName);
     }
 
     protected JournalReader createJournalReader(String s) throws IOException {

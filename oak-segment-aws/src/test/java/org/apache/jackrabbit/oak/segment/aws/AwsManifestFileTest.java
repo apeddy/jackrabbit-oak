@@ -24,6 +24,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.util.Date;
 import java.util.Properties;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
@@ -43,13 +44,14 @@ public class AwsManifestFileTest {
     private AwsContext awsContext;
 
     @Before
-    public void setup() {
+    public void setup() throws IOException {
         AmazonS3 s3 = s3Mock.createClient();
         String bucketName = "oak-test";
         s3.createBucket(bucketName);
 
         AmazonDynamoDB ddb = DynamoDBEmbedded.create().amazonDynamoDB();
-        awsContext = AwsContext.create(s3, bucketName, "oak", ddb, "testtable");
+        String lockTableName = "locktable-" + new Date().getTime();
+        awsContext = AwsContext.create(s3, bucketName, "oak", ddb, "testtable", lockTableName);
     }
 
     @Test

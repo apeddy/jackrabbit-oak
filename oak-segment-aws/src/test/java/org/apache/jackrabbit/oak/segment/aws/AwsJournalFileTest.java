@@ -40,8 +40,9 @@ public class AwsJournalFileTest {
     public void setup() throws InvalidKeyException, URISyntaxException {
         String bucketName = "oak-test";
         String tableName = "testtable-" + new Date().getTime();
-        AmazonDynamoDB ddb = DynamoDBMock.createClientWithTable(tableName);
-        AwsContext awsContext = AwsContext.create(null, bucketName, "oak", ddb, tableName);
+        String lockTableName = "locktable-" + new Date().getTime();
+        AmazonDynamoDB ddb = DynamoDBMock.createClient(tableName, lockTableName);
+        AwsContext awsContext = AwsContext.create(null, bucketName, "oak", ddb, tableName, lockTableName);
         journal = new AwsJournalFile(awsContext, "journal.log");
     }
 

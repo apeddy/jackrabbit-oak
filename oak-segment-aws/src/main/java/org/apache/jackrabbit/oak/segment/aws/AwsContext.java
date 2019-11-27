@@ -62,23 +62,26 @@ public final class AwsContext {
     private final String bucketName;
     private final String rootDirectory;
 
-    private final DynamoDB dynamoDB;
+    public final AmazonDynamoDB ddb;
     private final Table table;
     private final String tableName;
+    public final String lockTableName;
 
-    private AwsContext(AmazonS3 s3, String bucketName, String rootDirectory, AmazonDynamoDB ddb, String tableName) {
+    private AwsContext(AmazonS3 s3, String bucketName, String rootDirectory, AmazonDynamoDB ddb, String tableName,
+            String lockTableName) {
         this.s3 = s3;
         this.bucketName = bucketName;
         this.rootDirectory = rootDirectory.endsWith("/") ? rootDirectory : rootDirectory + "/";
-        this.dynamoDB = new DynamoDB(ddb);
-        this.table = dynamoDB.getTable(tableName);
+        this.ddb = ddb;
+        this.table = new DynamoDB(ddb).getTable(tableName);
         this.tableName = tableName;
+        this.lockTableName = lockTableName;
     }
 
     public static AwsContext create(AmazonS3 s3, String bucketName, String rootDirectory, AmazonDynamoDB ddb,
-            String tableName) {
+            String tableName, String lockTableName) {
 
-        return new AwsContext(s3, bucketName, rootDirectory, ddb, tableName);
+        return new AwsContext(s3, bucketName, rootDirectory, ddb, tableName, lockTableName);
     }
 
     public boolean doesObjectExist(String name) {
@@ -121,7 +124,7 @@ public final class AwsContext {
                 currentKeys[j] = primaryKeys.get(i + j);
             }
 
-            dynamoDB.batchWriteItem(new TableWriteItems(tableName).withPrimaryKeysToDelete(currentKeys));
+            new DynamoDB(ddb).batchWriteItem(new TableWriteItems(tableName).withPrimaryKeysToDelete(currentKeys));
         }
     }
 

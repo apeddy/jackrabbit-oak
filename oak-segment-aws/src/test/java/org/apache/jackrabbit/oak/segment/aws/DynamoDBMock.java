@@ -32,7 +32,7 @@ import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughput;
 import com.amazonaws.services.dynamodbv2.model.ScalarAttributeType;
 
 public final class DynamoDBMock {
-    public static AmazonDynamoDB createClientWithTable(String tableName) {
+    public static AmazonDynamoDB createClient(String tableName, String lockTableName) {
         AmazonDynamoDB ddb = DynamoDBEmbedded.create().amazonDynamoDB();
         DynamoDB client = new DynamoDB(ddb);
         CreateTableRequest createTableRequest = new CreateTableRequest().withTableName(tableName)
@@ -42,6 +42,13 @@ public final class DynamoDBMock {
                         new AttributeDefinition(TABLE_ATTR_TIMESTAMP, ScalarAttributeType.N))
                 .withProvisionedThroughput(new ProvisionedThroughput(1000L, 1500L));
         client.createTable(createTableRequest);
+
+        CreateTableRequest createLockTableRequest = new CreateTableRequest().withTableName(lockTableName)
+                .withKeySchema(new KeySchemaElement("key", KeyType.HASH))
+                .withAttributeDefinitions(new AttributeDefinition("key", ScalarAttributeType.S))
+                .withProvisionedThroughput(new ProvisionedThroughput(1000L, 1500L));
+        client.createTable(createLockTableRequest);
+
         return ddb;
     }
 }

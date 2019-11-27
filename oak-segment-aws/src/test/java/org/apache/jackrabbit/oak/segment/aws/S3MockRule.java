@@ -16,6 +16,9 @@
  */
 package org.apache.jackrabbit.oak.segment.aws;
 
+import java.io.IOException;
+import java.net.ServerSocket;
+
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.AnonymousAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
@@ -27,10 +30,15 @@ import org.junit.rules.ExternalResource;
 import io.findify.s3mock.S3Mock;
 
 public class S3MockRule extends ExternalResource {
-    S3Mock api = new S3Mock.Builder().withPort(8001).withInMemoryBackend().build();
+    private Integer port;
+    private S3Mock api;
 
-    public AmazonS3 createClient() {
-        EndpointConfiguration endpoint = new EndpointConfiguration("http://localhost:8001", "us-west-2");
+    public AmazonS3 createClient() throws IOException {
+        if (port == null) {
+            port = getFreePort();
+        }
+
+        EndpointConfiguration endpoint = new EndpointConfiguration("http://localhost:" + port, "us-west-2");
         AmazonS3 client = AmazonS3ClientBuilder.standard().withPathStyleAccessEnabled(true)
                 .withEndpointConfiguration(endpoint)
                 .withCredentials(new AWSStaticCredentialsProvider(new AnonymousAWSCredentials())).build();
@@ -38,12 +46,26 @@ public class S3MockRule extends ExternalResource {
     }
 
     @Override
-    protected void before() {
+    protected void before() throws IOException {
+        if (port == null) {
+            port = getFreePort();
+        }
+
+        if (api == null) {
+            api = new S3Mock.Builder().withPort(port).withInMemoryBackend().build();
+        }
+
         api.start();
     }
 
     @Override
     protected void after() {
         api.stop();
+    }
+
+    private static int getFreePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0);) {
+            return socket.getLocalPort();
+        }
     }
 }

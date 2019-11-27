@@ -46,8 +46,9 @@ public class AwsGCJournalFileTest extends GcJournalTest {
     public void setup() {
         String bucketName = "testbkt1";
         String tableName = "testtable-" + new Date().getTime();
-        AmazonDynamoDB ddb = DynamoDBMock.createClientWithTable(tableName);
-        awsContext = AwsContext.create(null, bucketName, "oak", ddb, tableName);
+        String lockTableName = "locktable-" + new Date().getTime();
+        AmazonDynamoDB ddb = DynamoDBMock.createClient(tableName, lockTableName);
+        awsContext = AwsContext.create(null, bucketName, "oak", ddb, tableName, lockTableName);
     }
 
     @Override
