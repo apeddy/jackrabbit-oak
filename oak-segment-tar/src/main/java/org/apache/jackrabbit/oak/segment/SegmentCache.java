@@ -296,7 +296,8 @@ public abstract class SegmentCache {
                     .removalListener(this::onRemove)
                     .build();
             this.stats = new Stats(NAME, maximumWeight, cache::size);
-            this.redis = new Jedis("localhost");
+            final String redisHost = System.getProperty("oak.segment.cache.redis.host", "localhost");
+            this.redis = new Jedis(redisHost);
             this.tracker = tracker;
             this.reader = reader;
         }
