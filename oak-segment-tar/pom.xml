@@ -52,7 +52,8 @@
                         </Export-Package>
                         <Embed-Dependency>
                             netty-*,
-                            concurrentlinkedhashmap-lru
+                            concurrentlinkedhashmap-lru,
+                            jedis
                         </Embed-Dependency>
                         <Import-Package>
                             <!-- OAK-7182 -->${guava.osgi.import},
@@ -310,15 +311,24 @@
             <scope>compile</scope>
         </dependency>
 
-		<!-- ConcurrentLinkedHashMap -->
+	<!-- ConcurrentLinkedHashMap -->
 
         <dependency>
             <groupId>com.googlecode.concurrentlinkedhashmap</groupId>
             <artifactId>concurrentlinkedhashmap-lru</artifactId>
             <version>${concurrentlinkedhashmap.version}</version>
             <scope>compile</scope>
-	    </dependency>
-	    
+	</dependency>
+	
+	<!-- Redis client for segment cache -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>3.2.0</version>
+            <type>jar</type>
+            <scope>compile</scope>
+        </dependency>
+
         <!-- Dependencies on Oak testing modules -->
 
         <dependency>

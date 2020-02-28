@@ -22,6 +22,8 @@ package org.apache.jackrabbit.oak.segment;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.jackrabbit.oak.segment.CacheWeights.segmentWeight;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,8 +35,11 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheStats;
 import com.google.common.cache.RemovalNotification;
 import org.apache.jackrabbit.oak.cache.AbstractCacheStats;
+import org.apache.jackrabbit.oak.commons.Buffer;
 import org.apache.jackrabbit.oak.segment.CacheWeights.SegmentCacheWeigher;
+import org.apache.jackrabbit.oak.segment.data.SegmentData;
 import org.jetbrains.annotations.NotNull;
+import redis.clients.jedis.Jedis;
 
 /**
  * A cache for {@link SegmentId#isDataSegmentId() data} {@link Segment}
@@ -62,9 +67,10 @@ public abstract class SegmentCache {
      * @param cacheSizeMB size of the cache in megabytes.
      */
     @NotNull
-    public static SegmentCache newSegmentCache(long cacheSizeMB) {
+    public static SegmentCache newSegmentCache(long cacheSizeMB, SegmentTracker tracker, SegmentReader segmentReader) {
         if (cacheSizeMB > 0) {
-            return new NonEmptyCache(cacheSizeMB);
+            //return new NonEmptyCache(cacheSizeMB);
+            return new RedisCache(cacheSizeMB, tracker, segmentReader);
         } else {
             return new EmptyCache();
         }
@@ -247,6 +253,154 @@ public abstract class SegmentCache {
 
         @NotNull
         @Override
+        public AbstractCacheStats getCacheStats() {
+            return stats;
+        }
+
+        @Override
+        public void recordHit() {
+            stats.hitCount.incrementAndGet();
+        }
+    }
+
+    private static class RedisCache extends SegmentCache {
+
+        private static final String REDIS_PREFIX = "SEGMENT";
+        /**
+         * Cache of recently accessed segments
+         */
+        @NotNull
+        private final Cache<SegmentId, Segment> cache;
+
+        /**
+         * Statistics of this cache. Do to the special access patter (see class
+         * comment), we cannot rely on {@link Cache#stats()}.
+         */
+        @NotNull
+        private final Stats stats;
+        private final Jedis redis;
+        private final SegmentTracker tracker;
+        private final SegmentReader reader;
+
+        /**
+         * Create a new cache of the given size.
+         *
+         * @param cacheSizeMB size of the cache in megabytes.
+         */
+        private RedisCache(long cacheSizeMB, SegmentTracker tracker, SegmentReader reader) {
+            long maximumWeight = cacheSizeMB * 1024 * 1024;
+            this.cache = CacheBuilder.newBuilder()
+                    .concurrencyLevel(16)
+                    .maximumWeight(maximumWeight)
+                    .weigher(new SegmentCacheWeigher())
+                    .removalListener(this::onRemove)
+                    .build();
+            this.stats = new Stats(NAME, maximumWeight, cache::size);
+            this.redis = new Jedis("localhost");
+            this.tracker = tracker;
+            this.reader = reader;
+        }
+
+        /**
+         * Removal handler called whenever an item is evicted from the cache.
+         */
+        private void onRemove(@NotNull RemovalNotification<SegmentId, Segment> notification) {
+            stats.evictionCount.incrementAndGet();
+            if (notification.getValue() != null) {
+                stats.currentWeight.addAndGet(-segmentWeight(notification.getValue()));
+            }
+            if (notification.getKey() != null) {
+                notification.getKey().unloaded();
+            }
+        }
+
+        @Override
+        @NotNull
+        public Segment getSegment(@NotNull SegmentId id, @NotNull Callable<Segment> loader) throws ExecutionException {
+            if (id.isDataSegmentId()) {
+                return cache.get(id, () -> {
+                    return loadFromRedis(id, loader);
+                });
+            } else {
+                try {
+                    return loader.call();
+                } catch (Exception e) {
+                    throw new ExecutionException(e);
+                }
+            }
+        }
+
+        private Segment loadFromRedis(SegmentId id, Callable<Segment> loader) throws ExecutionException {
+            if (tracker == null || reader == null) {
+                return loadFromLoader(id, loader);
+            }
+            final String idString = id.toString();
+            final byte[] bytes = redis.get((REDIS_PREFIX + ":" + idString).getBytes());
+            if (bytes != null) {
+                final Buffer buf = Buffer.wrap(bytes);
+                return new Segment(tracker, reader, id, buf);
+            } else {
+                try {
+                    final Segment segment = loadFromLoader(id, loader);
+                    final ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    segment.writeTo(bos);
+                    redis.set((REDIS_PREFIX + ":" + id.toString()).getBytes(), bos.toByteArray());
+                    return segment;
+                } catch (Exception e) {
+                    throw new ExecutionException(e);
+                }
+            }
+        }
+
+        private Segment loadFromLoader(SegmentId id, Callable<Segment> loader) throws ExecutionException {
+            try {
+                final String idString = id.toString();
+                long t0 = System.nanoTime();
+                Segment segment = loader.call();
+                stats.loadSuccessCount.incrementAndGet();
+                stats.loadTime.addAndGet(System.nanoTime() - t0);
+                stats.missCount.incrementAndGet();
+                stats.currentWeight.addAndGet(segmentWeight(segment));
+                id.loaded(segment);
+
+                return segment;
+            } catch (Exception e) {
+                stats.loadExceptionCount.incrementAndGet();
+                throw new ExecutionException(e);
+            }
+        }
+
+        @Override
+        public void putSegment(@NotNull Segment segment) {
+            SegmentId id = segment.getSegmentId();
+
+            if (id.isDataSegmentId()) {
+                // Putting the segment into the cache can cause it to be evicted
+                // right away again. Therefore we need to call loaded and update
+                // the current weight *before* putting the segment into the cache.
+                // This ensures that the eviction call back is always called
+                // *after* a call to loaded and that the current weight is only
+                // decremented *after* it was incremented.
+                id.loaded(segment);
+                stats.currentWeight.addAndGet(segmentWeight(segment));
+                cache.put(id, segment);
+                final ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                try {
+                    segment.writeTo(bos);
+                } catch (IOException e) {
+                    // ignore, don't want to change the method signature
+                }
+                redis.set(id.toString().getBytes(), bos.toByteArray());
+            }
+        }
+
+        @Override
+        public void clear() {
+            cache.invalidateAll();
+        }
+
+        @Override
+        @NotNull
         public AbstractCacheStats getCacheStats() {
             return stats;
         }

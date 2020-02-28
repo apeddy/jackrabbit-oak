@@ -140,7 +140,6 @@ public abstract class AbstractFileStore implements SegmentStore, Closeable {
             }
         });
         this.blobStore = builder.getBlobStore();
-        this.segmentCache = newSegmentCache(builder.getSegmentCacheSize());
         this.segmentReader = new CachingSegmentReader(
             this::getWriter,
             blobStore,
@@ -148,6 +147,7 @@ public abstract class AbstractFileStore implements SegmentStore, Closeable {
             builder.getTemplateCacheSize(),
             builder.getStatsProvider().getMeter("oak.segment.reads", StatsOptions.DEFAULT)
         );
+        this.segmentCache = newSegmentCache(builder.getSegmentCacheSize(), tracker, segmentReader);
         this.memoryMapping = builder.getMemoryMapping();
         this.offHeapAccess = builder.getOffHeapAccess();
         this.ioMonitor = builder.getIOMonitor();

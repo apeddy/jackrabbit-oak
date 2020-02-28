@@ -35,7 +35,7 @@ import org.apache.jackrabbit.oak.cache.AbstractCacheStats;
 import org.junit.Test;
 
 public class SegmentCacheTest {
-    private final SegmentCache cache = newSegmentCache(DEFAULT_SEGMENT_CACHE_MB);
+    private final SegmentCache cache = newSegmentCache(DEFAULT_SEGMENT_CACHE_MB, null, null);
 
     private final SegmentId id1 = new SegmentId(EMPTY_STORE, 0x0000000000000001L, 0xa000000000000001L, cache::recordHit);
     private final Segment segment1 = mock(Segment.class);
@@ -193,7 +193,7 @@ public class SegmentCacheTest {
 
     @Test
     public void emptyCacheStatsTest() throws Exception {
-        SegmentCache cache = newSegmentCache(0);
+        SegmentCache cache = newSegmentCache(0, null, null);
         AbstractCacheStats stats = cache.getCacheStats();
 
         // empty cache

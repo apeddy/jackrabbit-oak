@@ -279,7 +279,7 @@ public class CacheWeightEstimator {
         final int cacheSizeMB = 100;
         final int bufferSize = 5 * 1024;
         Supplier<Entry<Object, Long[]>> factory = () -> {
-            SegmentCache cache = newSegmentCache(cacheSizeMB);
+            SegmentCache cache = newSegmentCache(cacheSizeMB, null, null);
             for (int i = 0; i < count; ++i) {
                 Segment segment = randomSegment(bufferSize);
                 cache.putSegment(segment);

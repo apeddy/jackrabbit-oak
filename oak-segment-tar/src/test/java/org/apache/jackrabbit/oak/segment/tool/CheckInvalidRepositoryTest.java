@@ -34,6 +34,7 @@ import org.apache.jackrabbit.oak.segment.file.JournalEntry;
 import org.apache.jackrabbit.oak.segment.file.JournalReader;
 import org.apache.jackrabbit.oak.segment.file.tar.LocalJournalFile;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -177,6 +178,7 @@ public class CheckInvalidRepositoryTest extends CheckRepositoryTestBase {
             "Error while traversing /a: java.lang.IllegalArgumentException: Segment reference out of bounds"));
     }
 
+    @Ignore("for now to save some time")
     @Test
     public void testCorruptPathInCp1NoValidRevision() throws Exception {
         corruptPathFromCheckpoint();
